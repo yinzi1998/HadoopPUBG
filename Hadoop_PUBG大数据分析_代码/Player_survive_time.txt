@@ -1,0 +1,187 @@
+package hadoop;
+
+import java.io.IOException;
+import java.util.StringTokenizer;
+import java.util.HashMap;
+import java.util.Iterator;
+ 
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.lib.input.FileSplit;
+import org.apache.hadoop.util.GenericOptionsParser;
+
+import hadoop.Player_survive_time.MyMapper;
+import hadoop.Player_survive_time.MyReducer;
+
+public class Player_survive_time {
+	
+	  private static class MyMapper extends Mapper<LongWritable, Text, Text, Text> 
+	  {         
+	       private String file;
+	       public void map(LongWritable key, Text value, Context context) throws IOException, ClassCastException, InterruptedException 
+	       {
+	    	   // 获取输入文件的全路径和名称      	  
+	    	    float player_survive_time_total = 0;
+	    	    float player_survive_time_avg = 0;
+	    	    float player_survive_time_temp=0;
+	    	    float player_survive_time_max=0;
+	    	    float player_survive_time_min=0;
+	    	    int i=0;
+	    	    FileSplit fileSplit = (FileSplit) context.getInputSplit();
+	    		file = fileSplit.getPath().getName();
+	    		if(file.equals("agg_match_stats_sample"))
+			    {         
+	    			String line = value.toString().trim();               
+	    			if ( line == null || line.equals("") )
+	    			{
+	    				System.out.println("sample not exist");
+	              	   	return;
+	    			}
+	    			String[] samples = line.split("\n");      
+	    			player_survive_time_max = Float.parseFloat(samples[0].split(",")[12]);
+	    			player_survive_time_min = Float.parseFloat(samples[0].split(",")[12]);
+	    			for(String sample:samples)
+	    			{
+		
+	    				//String match_id = sample.split(",")[2];
+	    				//String match_mode = sample.split(",")[3];
+	    				//String player_kills = sample.split(",")[10];
+	    				String player_survive_time = sample.split(",")[12];
+	    				player_survive_time_temp = Float.parseFloat(player_survive_time);
+	    				if(player_survive_time_temp > player_survive_time_max)
+	    				{
+	    					player_survive_time_max = player_survive_time_temp;
+	    				}
+	    				
+	    				if(player_survive_time_temp < player_survive_time_min)
+	    				{
+	    					player_survive_time_min = player_survive_time_temp;
+	    				}
+	    				
+	    				player_survive_time_total = player_survive_time_total+player_survive_time_temp;
+	    				i++;
+	    			}
+	    			player_survive_time_avg = player_survive_time_total/i;
+	    			
+	    			context.write(new Text("player_survive_time_avg"), new Text(player_survive_time_avg+","+i));
+	    			context.write(new Text("player_survive_time_max"), new Text(player_survive_time_max+","+i));
+	    			context.write(new Text("player_survive_time_min"), new Text(player_survive_time_min+","+i));
+	    			
+	            	}
+	    		
+	       	}
+	  }
+	  
+	  public  static class MyReducer extends  Reducer<Text, Text, Text, Text> 
+	  {
+	  	@Override
+	  	protected void reduce(Text key, Iterable<Text> values,Context context) throws IOException, InterruptedException 
+		{ 
+	  		
+	            	/*int[] valA = new int[MATRIX_ABN];//矩阵A的列数 = 矩阵B的行数
+	           	 int[] valB = new int[MATRIX_ABN];//矩阵B的行数 = 矩阵A的列数
+	            	int i;
+	            	for (i = 0; i < MATRIX_ABN; i ++)  //初始化数组
+	            	{
+	                 	valA[i] = 0;
+	                 	valB[i] = 0;
+	            	}*/
+	  		float total=0;
+	  		int i=0;
+	  		float num1=0;
+	  		int num2=0;
+	  		float temp=0;
+	  		float avg=0;
+	  		float max=0;
+	  		float min=0;
+	  		for(Text kk:key)
+	  		{
+	  			String k = kk.toString();
+	  			if(k.equals("player_survive_time_avg"))
+	  			{
+	  				for(Text line:values)
+	  				{
+	  					String value = line.toString();
+	  					num1 = Float.parseFloat(value.split(",")[0]);
+	  					num2=Integer.parseInt(value.split(",")[1]);
+	  					total = total+num1*num2;
+	  					i++;
+	  				}
+	  				avg = total/i;
+	  				context.write(kk, new Text(Float.toString(avg)));
+	  			}
+	  			
+	  			if(k.equals("player_survive_time_max"))
+	  			{
+	  				max=Float.parseFloat(values[0].split(",")[0]);
+	  				for(Text line:values)
+	  				{
+	  					String value = line.toString();
+	  					num1 = Float.parseFloat(value.split(",")[0]);
+	  					if(num1>max)
+	  					{
+	  						max = num1;
+	  					}
+	  				}
+	  				context.write(kk, new Text(Float.toString(max)));
+	  			}
+	  			
+	  			if(k.equals("player_survive_time_min"))
+	  			{
+	  				min=Float.parseFloat(values[0].split(",")[0]);
+	  				for(Text line:values)
+	  				{
+	  					String value = line.toString();
+	  					num1 = Float.parseFloat(value.split(",")[0]);
+	  					if(num1<min)
+	  					{
+	  						min = num1;
+	  					}
+	  				}
+	  				context.write(kk, new Text(Float.toString(min)));
+	  			}
+	  		}
+	  		      	
+	     }
+	 }
+	  
+	  
+	  public static void main(String[] args) throws Exception 
+	  {
+		  //job开始时间
+		  long main_start=System.currentTimeMillis();
+	     	Configuration conf = new Configuration();
+	     	Job job = new Job(conf, "Player_survive_time");
+	      	job.setJarByClass(Player_survive_time.class);
+	      	job.setMapperClass(MyMapper.class);
+	      	job.setReducerClass(MyReducer.class);
+	      	job.setOutputKeyClass(Text.class);
+	      	job.setOutputValueClass(Text.class);
+	      	FileInputFormat.addInputPath(job, new Path(otherArgs[0]));
+	      	FileOutputFormat.setOutputPath(job, new Path(otherArgs[1]));
+	      	
+			job.setOutputValueClass(IntWritable.class);
+	 	 
+			job.setInputFormatClass(TextInputFormat.class);
+			job.setOutputFormatClass(TextOutputFormat.class);
+     
+	     	if (job.waitForCompletion(true)) 
+		    { 
+	     		long main_end=System.currentTimeMillis();      //job正常结束的时间
+	     		System.out.println("程序已经运行结束");
+	     		System.out.println("程序一共运行了"+ " :  "+(main_end - main_start) +"  ms");
+	     		System.exit(0);
+	      	}
+	     	else 
+	     	{
+	     		System.out.println("程序没有正常结束");
+	      	}
+	    }
+}
